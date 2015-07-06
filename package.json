@@ -27,7 +27,7 @@
     "license": "Apache-2.0",
     "dependencies": {
         "debug": "2.2.x",
-        "enketo-xslt": "1.0.8",
+        "enketo-xslt": "1.1.0",
         "express": "4.12.x",
         "libxslt": "0.4.x",
         "q": "2.0.x",
