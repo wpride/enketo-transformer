@@ -1,16 +1,19 @@
-/* global setTimeout */
 "use strict";
 
-var version,
-    Q = require( 'q' ),
-    fs = require( 'fs' ),
-    crypto = require( 'crypto' ),
-    transformer = require( 'node_xslt' ),
-    libxmljs = require( "libxmljs" ),
-    sheets = require( 'enketo-xslt' ),
-    debug = require( 'debug' )( 'transformer' );
-
-_setVersion();
+var Promise = require( 'q' ).Promise;
+var fs = require( 'fs' );
+var crypto = require( 'crypto' );
+var libxslt = require( 'libxslt' );
+var libxmljs = libxslt.libxmljs;
+var sheets = require( 'enketo-xslt' );
+var debug = require( 'debug' )( 'transformer' );
+var xslFormDoc = libxmljs.parseXml( sheets.xslForm, {
+    nocdata: true
+} );
+var xslModelDoc = libxmljs.parseXml( sheets.xslModel, {
+    nocdata: true
+} );
+var version = _getVersion();
 
 /**
  * Performs XSLT transformation on XForm asynchronously.
@@ -19,58 +22,58 @@ _setVersion();
  * @return {Promise}     promise
  */
 function transform( survey ) {
-    var error, errorMsg, doc, formStylesheet, instanceStylesheet, xsltEndTime,
-        deferred = Q.defer(),
-        startTime = new Date().getTime();
+    var xsltEndTime;
+    var xformDoc;
+    var startTime = new Date().getTime();
 
-    // make this asynchronous, sort of
-    setTimeout( function() {
-        try {
-            doc = transformer.readXmlString( survey.xform );
+    xformDoc = libxmljs.parseXml( survey.xform );
 
-            formStylesheet = transformer.readXsltString( sheets.xslForm );
-            survey.form = _stripRoot( transformer.transform( formStylesheet, doc, [ 'wtf', 'why' ] ) );
+    return _transform( xslFormDoc, xformDoc )
+        .then( function( htmlDoc ) {
+            htmlDoc = _replaceTheme( htmlDoc, survey.theme );
+            htmlDoc = _replaceMediaSources( htmlDoc, survey.manifest );
+            // TODO: does this result in self-closing tags?
+            survey.form = htmlDoc.root().get( '*' ).toString( false );
 
-            instanceStylesheet = transformer.readXsltString( sheets.xslModel );
-            survey.model = _stripRoot( transformer.transform( instanceStylesheet, doc, [ 'wtf', 'why' ] ) );
+            return _transform( xslModelDoc, xformDoc );
+        } )
+        .then( function( xmlDoc ) {
+            xmlDoc = _replaceMediaSources( xmlDoc, survey.manifest );
 
-            xsltEndTime = new Date().getTime();
-            debug( 'form and instance XSLT transformation took ' + ( xsltEndTime - startTime ) / 1000 + ' seconds' );
-
-            survey.form = _replaceTheme( survey.form, survey.theme );
-
-            survey.form = _replaceMediaSources( survey.form, survey.manifest );
-            survey.model = _replaceMediaSources( survey.model, survey.manifest );
-            debug( 'post-processing transformation result took ' + ( new Date().getTime() - xsltEndTime ) / 1000 + ' seconds' );
+            survey.model = xmlDoc.root().get( '*' ).toString();
 
             delete survey.xform;
-
-            deferred.resolve( survey );
-        } catch ( e ) {
-            error = ( e ) ? new Error( e ) : new Error( 'unknown transformation error' );
-            debug( 'error during xslt transformation', error );
-            deferred.reject( error );
-        }
-    }, 0 );
-
-    return deferred.promise;
+            return survey;
+        } );
 }
 
-function _stripRoot( xml ) {
-    var xmlDoc = libxmljs.parseXml( xml );
-    return xmlDoc.root().get( '*' ).toString( false );
+function _transform( xslDoc, xmlDoc ) {
+    return new Promise( function( resolve, reject ) {
+        libxslt.parse( xslDoc, function( error, stylesheet ) {
+            if ( error ) {
+                reject( error );
+            } else {
+                stylesheet.apply( xmlDoc, function( error, result ) {
+                    if ( error ) {
+                        reject( error );
+                    } else {
+                        resolve( result );
+                    }
+                } );
+            }
+        } );
+    } );
 }
 
-function _replaceTheme( xml, theme ) {
-    var doc, formClassAttr, formClassValue,
+function _replaceTheme( doc, theme ) {
+    var formClassAttr, formClassValue,
         HAS_THEME = /(theme-)[^"'\s]+/;
 
     if ( !theme ) {
-        return xml;
+        return doc;
     }
 
-    doc = libxmljs.parseXml( xml );
-    formClassAttr = doc.root().get( '/form' ).attr( 'class' );
+    formClassAttr = doc.root().get( '/root/form' ).attr( 'class' );
     formClassValue = formClassAttr.value();
 
     if ( HAS_THEME.test( formClassValue ) ) {
@@ -79,21 +82,17 @@ function _replaceTheme( xml, theme ) {
         formClassAttr.value( formClassValue + ' ' + 'theme-' + theme );
     }
 
-    // TODO: probably result in selfclosing tags for empty elements where not allowed in HTML. Check this.
-    return doc.toString();
+    return doc;
 }
 
-function _replaceMediaSources( xmlStr, manifest ) {
-    var doc;
+function _replaceMediaSources( xmlDoc, manifest ) {
 
     if ( !manifest ) {
-        return xmlStr;
+        return xmlDoc;
     }
 
-    doc = libxmljs.parseXml( xmlStr );
-
     // iterate through each element with a src attribute
-    doc.find( '//*[@src]' ).forEach( function( mediaEl ) {
+    xmlDoc.find( '//*[@src]' ).forEach( function( mediaEl ) {
         manifest.some( function( file ) {
             if ( new RegExp( 'jr://(images|video|audio|file|file-csv)/' + file.filename ).test( mediaEl.attr( 'src' ).value() ) ) {
                 mediaEl.attr( 'src', _toLocalMediaUrl( file.downloadUrl ) );
@@ -105,7 +104,7 @@ function _replaceMediaSources( xmlStr, manifest ) {
 
     // add form logo if existing in manifest
     manifest.some( function( file ) {
-        var formLogoEl = doc.get( '//*[@class="form-logo"]' );
+        var formLogoEl = xmlDoc.get( '//*[@class="form-logo"]' );
         if ( file.filename === 'form_logo.png' && formLogoEl ) {
             formLogoEl
                 .node( 'img' )
@@ -115,8 +114,7 @@ function _replaceMediaSources( xmlStr, manifest ) {
         }
     } );
 
-    // TODO: probably result in selfclosing tags for empty elements where not allowed in HTML. Check this.
-    return doc.toString();
+    return xmlDoc;
 }
 
 /**
@@ -136,11 +134,8 @@ function _toLocalMediaUrl( url ) {
  * gets a hash of the 2 XSL stylesheets
  * @return {string} hash representing version of XSL stylesheets - NOT A PROMISE
  */
-function _setVersion() {
-    // only perform this expensive check once after (re)starting application
-    if ( !version ) {
-        version = _md5( sheets.xslForm + sheets.xslModel );
-    }
+function _getVersion() {
+    return _md5( sheets.xslForm + sheets.xslModel );
 }
 
 /**
