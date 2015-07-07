@@ -16,7 +16,7 @@ var xslModelDoc = libxmljs.parseXml( sheets.xslModel, {
 var version = _getVersion();
 
 /**
- * Performs XSLT transformation on XForm asynchronously.
+ * Performs XSLT transformation on XForm and process the result.
  *
  * @param  {{xform: string, theme: string}} survey Survey object with at least an xform property
  * @return {Promise}     promise
@@ -26,9 +26,11 @@ function transform( survey ) {
     var xformDoc;
     var startTime = new Date().getTime();
 
-    xformDoc = libxmljs.parseXml( survey.xform );
-
-    return _transform( xslFormDoc, xformDoc )
+    return _parseXml( survey.xform )
+        .then( function( doc ) {
+            xformDoc = doc;
+            return _transform( xslFormDoc, xformDoc );
+        } )
         .then( function( htmlDoc ) {
             htmlDoc = _replaceTheme( htmlDoc, survey.theme );
             htmlDoc = _replaceMediaSources( htmlDoc, survey.manifest );
@@ -40,13 +42,20 @@ function transform( survey ) {
         .then( function( xmlDoc ) {
             xmlDoc = _replaceMediaSources( xmlDoc, survey.manifest );
 
-            survey.model = xmlDoc.root().get( '*' ).toString();
+            survey.model = xmlDoc.root().get( '*' ).toString( false );
 
             delete survey.xform;
             return survey;
         } );
 }
 
+/**
+ * Performs a generic XSLT transformation
+ * 
+ * @param  {[type]} xslDoc libxmljs object of XSL stylesheet
+ * @param  {[type]} xmlDoc libxmljs object of XML document
+ * @return {Promise}       libxmljs result document object 
+ */
 function _transform( xslDoc, xmlDoc ) {
     return new Promise( function( resolve, reject ) {
         libxslt.parse( xslDoc, function( error, stylesheet ) {
@@ -65,6 +74,32 @@ function _transform( xslDoc, xmlDoc ) {
     } );
 }
 
+/**
+ * Parses and XML string into a libxmljs object
+ * 
+ * @param  {string} xmlStr XML string
+ * @return {Promise}       libxmljs result document object
+ */
+function _parseXml( xmlStr ) {
+    var doc;
+
+    return new Promise( function( resolve, reject ) {
+        try {
+            doc = libxmljs.parseXml( xmlStr );
+            resolve( doc );
+        } catch ( e ) {
+            reject( e );
+        }
+    } );
+}
+
+/**
+ * Replaces the form-defined theme
+ * 
+ * @param  {[type]} doc   libxmljs object
+ * @param  {string} theme theme
+ * @return {[type]}       libxmljs object
+ */
 function _replaceTheme( doc, theme ) {
     var formClassAttr, formClassValue,
         HAS_THEME = /(theme-)[^"'\s]+/;
@@ -85,6 +120,13 @@ function _replaceTheme( doc, theme ) {
     return doc;
 }
 
+/**
+ * Replaces xformManifest urls with URLs according to an internal Enketo Express url format
+ * 
+ * @param  {[type]} xmlDoc   libxmljs object
+ * @param  {*} manifest      json representation of XForm manifest
+ * @return {Promise}         libxmljs object
+ */
 function _replaceMediaSources( xmlDoc, manifest ) {
 
     if ( !manifest ) {
