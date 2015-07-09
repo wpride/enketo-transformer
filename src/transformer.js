@@ -171,13 +171,47 @@ function _replaceMediaSources( xmlDoc, manifest ) {
  * @return {[type]}     libxmljs object
  */
 function _replaceLanguageTags( doc ) {
+    var languageElements;
     var languages;
 
-    languages = doc.find( '/root/form/select[@id="form-languages"]/option' ).map( function( el ) {
+    languageElements = doc.find( '/root/form/select[@id="form-languages"]/option' );
+
+    // list of parsed language objects
+    languages = languageElements.map( function( el ) {
         return language.parse( el.text() );
     } );
 
+    // add or correct dir and value attributes, and amend textcontent of options in language selector
+    languageElements.forEach( function( el, index ) {
+        el.attr( {
+            dir: languages[ index ].dir,
+            value: languages[ index ].tag
+        } ).text( languages[ index ].desc );
+    } );
+
+    // correct lang attributes
+    languages.forEach( function( lang ) {
+        if ( lang.src === lang.tag ) {
+            return;
+        }
+        doc.find( '//span[@lang=' + lang.src + ']' ).forEach( function( el ) {
+
+            el.attr( {
+                lang: lang.tag
+            } );
+        } );
+    } );
+
     return doc;
+}
+
+function _findLanguage( description, languages ) {
+    var lng;
+
+    languages.some( function( lang ) {
+        lng = lang;
+        return lang.desc === description;
+    } );
 }
 
 /**
