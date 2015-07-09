@@ -5,6 +5,7 @@ var fs = require( 'fs' );
 var crypto = require( 'crypto' );
 var libxslt = require( 'libxslt' );
 var libxmljs = libxslt.libxmljs;
+var language = require( './language' );
 var sheets = require( 'enketo-xslt' );
 var debug = require( 'debug' )( 'transformer' );
 var xslFormDoc = libxmljs.parseXml( sheets.xslForm, {
@@ -34,6 +35,7 @@ function transform( survey ) {
         .then( function( htmlDoc ) {
             htmlDoc = _replaceTheme( htmlDoc, survey.theme );
             htmlDoc = _replaceMediaSources( htmlDoc, survey.manifest );
+            htmlDoc = _replaceLanguageTags( htmlDoc );
             // TODO: does this result in self-closing tags?
             survey.form = htmlDoc.root().get( '*' ).toString( false );
 
@@ -157,6 +159,25 @@ function _replaceMediaSources( xmlDoc, manifest ) {
     } );
 
     return xmlDoc;
+}
+
+/**
+ * Performs a lookup of the valid IANA subtags for all languages used in the html document language selector.
+ * Replaces all lang attributes to the valid IANA tag if found.
+ *
+ * @see  http://www.w3.org/International/questions/qa-choosing-language-tags
+ * 
+ * @param  {[type]} doc libxmljs object
+ * @return {[type]}     libxmljs object
+ */
+function _replaceLanguageTags( doc ) {
+    var languages;
+
+    languages = doc.find( '/root/form/select[@id="form-languages"]/option' ).map( function( el ) {
+        return language.parse( el.text() );
+    } );
+
+    return doc;
 }
 
 /**
