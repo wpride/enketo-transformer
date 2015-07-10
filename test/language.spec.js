@@ -44,7 +44,8 @@ describe( 'language', function() {
                 dir: 'ltr',
                 src: 'English'
             } ],
-            // better way, which works well in Enketo (not in ODK Collect), description is automatically set to English description
+            // better way, which works well in Enketo (not in ODK Collect), 
+            // description is automatically set to English description if tag is found
             [ 'ar', {
                 tag: 'ar',
                 desc: 'Arabic',
@@ -64,17 +65,18 @@ describe( 'language', function() {
                 dir: 'rtl',
                 src: 'ar__ArabicDialect'
             } ],
-            [ 'ar__Arabic_Dialect', {
-                tag: 'ar',
-                desc: 'Arabic Dialect',
-                dir: 'rtl',
-                src: 'ar__Arabic_Dialect'
-            } ],
             [ 'nl__Nederlands', {
                 tag: 'nl',
                 desc: 'Nederlands',
                 dir: 'ltr',
                 src: 'nl__Nederlands'
+            } ],
+            // recommended way, also converts underscores to spaces
+            [ 'ar__Arabic_Dialect', {
+                tag: 'ar',
+                desc: 'Arabic Dialect',
+                dir: 'rtl',
+                src: 'ar__Arabic_Dialect'
             } ],
             // unmatchable tag
             [ '0a', {

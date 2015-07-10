@@ -162,8 +162,8 @@ function _replaceMediaSources( xmlDoc, manifest ) {
 }
 
 /**
- * Performs a lookup of the valid IANA subtags for all languages used in the html document language selector.
  * Replaces all lang attributes to the valid IANA tag if found.
+ * Also add the dir attribute to the languages in the language selector.
  *
  * @see  http://www.w3.org/International/questions/qa-choosing-language-tags
  * 
@@ -194,8 +194,7 @@ function _replaceLanguageTags( doc ) {
         if ( lang.src === lang.tag ) {
             return;
         }
-        doc.find( '//span[@lang=' + lang.src + ']' ).forEach( function( el ) {
-
+        doc.find( '/root/form//*[@lang="' + lang.src + '"]' ).forEach( function( el ) {
             el.attr( {
                 lang: lang.tag
             } );
@@ -203,15 +202,6 @@ function _replaceLanguageTags( doc ) {
     } );
 
     return doc;
-}
-
-function _findLanguage( description, languages ) {
-    var lng;
-
-    languages.some( function( lang ) {
-        lng = lang;
-        return lang.desc === description;
-    } );
 }
 
 /**
